@@ -29,6 +29,7 @@
   (cond
    ((not (pair? form)) #t)
    ((eq? (car form) 'unquote) #f)
+   ((eq? (car form) 'unquote-splicing) #f)
    ((or (eq? (car form) 'quasiquote)
         (eq? (car form) 'quote))
     #t)
@@ -43,6 +44,11 @@
     `(quote ,form))
    ((eq? (car form) 'unquote)
     (expand-quasiquotes (cadr form)))
+   ((and
+     (list? (cadr form))
+     (eq? (caadr form) 'unquote-splicing))
+    `(append (list ,(expand-1-quasiquote (car form)))
+            (list ,@(expand-quasiquotes (cadadr form)))))
    (else
     `(cons ,(expand-1-quasiquote (car form))
            ,(expand-1-quasiquote (cdr form))))))
