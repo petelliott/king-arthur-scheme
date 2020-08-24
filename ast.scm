@@ -3,7 +3,9 @@
 (define-record-type ast-ref
   (make-ast-ref symbol)
   ast-ref?
-  (symbol ast-ref-symbol))
+  (symbol ast-ref-symbol)
+  (boxed ast-ref-boxed ast-ref-set-boxed!)
+  (scope ast-ref-scope ast-ref-set-scope!))
 
 (define-record-type ast-define
   (make-ast-define symbol expr)
@@ -23,7 +25,8 @@
   (make-ast-lambda lambda-list body)
   ast-lambda?
   (lambda-list ast-lambda-list)
-  (body ast-lambda-body))
+  (body ast-lambda-body)
+  (parent ast-lambda-parent ast-lambda-set-parent!))
 
 (define-record-type ast-if
   (make-ast-if condition tbranch fbranch)

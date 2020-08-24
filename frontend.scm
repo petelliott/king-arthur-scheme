@@ -1,6 +1,32 @@
 (import (scheme base)
         (srfi srfi-1))
 
+(define (traverse-ast ast pred proc)
+  (cond
+   ((pred ast)
+    (proc ast (lambda (node) (traverse-ast node pred proc))))
+   ((ast-define? ast)
+    (traverse-ast (ast-define-ref ast) pred proc)
+    (traverse-ast (ast-define-expr ast) pred proc))
+   ((ast-set? ast)
+    (traverse-ast (ast-set-ref ast) pred proc)
+    (traverse-ast (ast-set-expr ast) pred proc))
+   ((ast-lambda? ast)
+    (map
+     (lambda (node)
+       (traverse-ast node pred proc))
+     (ast-lambda-body ast)))
+   ((ast-if? ast)
+    (traverse-ast (ast-if-tbranch ast) pred proc)
+    (traverse-ast (ast-if-fbranch ast) pred proc))
+   ((ast-call? ast)
+    (traverse-ast (ast-call-callee ast) pred proc)
+    (map
+     (lambda (node)
+       (traverse-ast node pred proc))
+     (ast-call-args ast)))))
+
+
 (define (form->ast form)
   (case (car form)
     ((define)
@@ -23,6 +49,20 @@
    ((list? object) (form->ast object))
    ((symbol? object) (make-ast-ref object))
    (else (make-ast-literal object))))
+
+
+(define (add-scope-to-lambdas-inner ast scope)
+  (traverse-ast ast ast-lambda?
+                (lambda (node recur)
+                  (ast-lambda-set-parent! node scope)
+                  (map
+                   (lambda (newnode)
+                     (add-scope-to-lambdas-inner newnode node))
+                   (ast-lambda-body node)))))
+
+(define (add-scope-to-lambdas ast)
+  (add-scope-to-lambdas-inner ast '())
+  ast)
 
 ;; #f if no valid unquote occurs in form
 (define (never-unquoted? form)
@@ -67,4 +107,5 @@
 (define (frontend form)
   (-> form
       expand-quasiquotes
-      object->ast))
+      object->ast
+      add-scope-to-lambdas))
