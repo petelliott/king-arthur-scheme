@@ -1,5 +1,5 @@
 (load "ast.scm")
 (load "frontend.scm")
 
-(write (object->ast (read)))
+(write (frontend (read)))
 (newline)

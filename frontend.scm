@@ -1,4 +1,5 @@
-(import (scheme base))
+(import (scheme base)
+        (srfi srfi-1))
 
 (define (form->ast form)
   (case (car form)
@@ -22,3 +23,48 @@
    ((list? object) (form->ast object))
    ((symbol? object) (make-ast-ref object))
    (else (make-ast-literal object))))
+
+;; #f if no valid unquote occurs in form
+(define (never-unquoted? form)
+  (cond
+   ((not (pair? form)) #t)
+   ((eq? (car form) 'unquote) #f)
+   ((or (eq? (car form) 'quasiquote)
+        (eq? (car form) 'quote))
+    #t)
+   (else (and (never-unquoted? (car form))
+              (never-unquoted? (cdr form))))))
+
+;; expands a quasiquoted value
+(define (expand-1-quasiquote form)
+  (cond ; TODO check tail for no more unquotes
+   ((or (not (pair? form))
+        (never-unquoted? form))
+    `(quote ,form))
+   ((eq? (car form) 'unquote)
+    (expand-quasiquotes (cadr form)))
+   (else
+    `(cons ,(expand-1-quasiquote (car form))
+           ,(expand-1-quasiquote (cdr form))))))
+
+;; expands quasiquote into cons and regular quote
+(define (expand-quasiquotes form)
+  (cond
+   ((not (pair? form)) form)
+   ((eq? (car form) 'quasiquote)
+    (expand-1-quasiquote (cadr form)))
+   (else (map expand-quasiquotes form))))
+
+
+(define (pipeline val fns)
+  (if (null? fns)
+      val
+      (pipeline ((car fns) val) (cdr fns))))
+
+(define (-> val . fns)
+  (pipeline val fns))
+
+(define (frontend form)
+  (-> form
+      expand-quasiquotes
+      object->ast))
