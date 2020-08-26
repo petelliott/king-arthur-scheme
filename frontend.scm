@@ -6,37 +6,46 @@
    ((pred ast)
     (proc ast (lambda (node) (traverse-ast node pred proc))))
    ((ast-define? ast)
-    (traverse-ast (ast-define-ref ast) pred proc)
-    (traverse-ast (ast-define-expr ast) pred proc))
+    (ast-define-set-ref! ast (traverse-ast (ast-define-ref ast) pred proc))
+    (ast-define-set-expr! ast (traverse-ast (ast-define-expr ast) pred proc))
+    ast)
    ((ast-set? ast)
-    (traverse-ast (ast-set-ref ast) pred proc)
-    (traverse-ast (ast-set-expr ast) pred proc))
+    (ast-set-set-ref! ast (traverse-ast (ast-set-ref ast) pred proc))
+    (ast-set-set-expr! ast (traverse-ast (ast-set-expr ast) pred proc))
+    ast)
    ((ast-lambda? ast)
-    (map
-     (lambda (node)
-       (traverse-ast node pred proc))
-     (ast-lambda-body ast)))
+    (ast-lambda-set-body! ast (map
+                               (lambda (node)
+                                 (traverse-ast node pred proc))
+                               (ast-lambda-body ast)))
+    ast)
    ((ast-if? ast)
-    (traverse-ast (ast-if-tbranch ast) pred proc)
-    (traverse-ast (ast-if-fbranch ast) pred proc))
+    (ast-if-set-condition! ast (traverse-ast (ast-if-condition ast) pred proc))
+    (ast-if-set-tbranch! ast (traverse-ast (ast-if-tbranch ast) pred proc))
+    (ast-if-set-fbranch! ast (traverse-ast (ast-if-fbranch ast) pred proc))
+    ast)
    ((ast-call? ast)
-    (traverse-ast (ast-call-callee ast) pred proc)
-    (map
-     (lambda (node)
-       (traverse-ast node pred proc))
-     (ast-call-args ast)))))
+    (ast-call-set-callee! ast (traverse-ast (ast-call-callee ast) pred proc))
+    (ast-call-set-args! ast (map
+                             (lambda (node)
+                               (traverse-ast node pred proc))
+                             (ast-call-args ast)))
+    ast)
+   (else ast)))
 
 
 (define (form->ast form)
   (case (car form)
     ((define)
      (if (pair? (cadr form))
-         (make-ast-define (caadr form)
+         (make-ast-define (make-ast-ref (caadr form))
                           (make-ast-lambda (cdadr form)
-                                           (map object->ast (cddr form))))
-         (make-ast-define (cadr form) (object->ast (cddr form)))))
-    ((set!) (make-ast-set (second form) (object->ast (third form))))
-    ((lambda) (make-ast-lambda (second form) (map object->ast (cddr form))))
+                                           (map object->ast (cddr form))
+                                           '()))
+         (make-ast-define (make-ast-ref (cadr form)) (object->ast (caddr form)))))
+    ((set!) (make-ast-set (make-ast-ref (second form)) (object->ast (third form))))
+    ((lambda) (make-ast-lambda (improper-map make-ast-ref (second form))
+                               (map object->ast (cddr form)) '()))
     ((if) (make-ast-if (second form) (object->ast (third form))
                        (object->ast (fourth form))))
     ((quote) (make-ast-quote (second form)))
@@ -52,17 +61,48 @@
 
 
 (define (add-scope-to-lambdas-inner ast scope)
-  (traverse-ast ast ast-lambda?
+  (traverse-ast ast (pred-or ast-lambda? ast-ref?)
                 (lambda (node recur)
-                  (ast-lambda-set-parent! node scope)
-                  (map
-                   (lambda (newnode)
-                     (add-scope-to-lambdas-inner newnode node))
-                   (ast-lambda-body node)))))
+                  (cond
+                   ((ast-lambda? node)
+                    (ast-lambda-set-parent! node scope)
+                    (map
+                     (lambda (newnode)
+                       (add-scope-to-lambdas-inner newnode node))
+                     (ast-lambda-body node)))
+                   ((ast-ref? node)
+                    (ast-ref-set-scope! node scope)))
+                  node)))
 
 (define (add-scope-to-lambdas ast)
-  (add-scope-to-lambdas-inner ast '())
+  (add-scope-to-lambdas-inner ast #f)
   ast)
+
+
+(define (resolve-references ast)
+  (traverse-ast ast (pred-or ast-ref? ast-define? ast-lambda?)
+                (lambda (node recur)
+                  (cond
+                   ((ast-ref? node)
+                    (ast-lambda-scope-ref (ast-ref-scope node)
+                                          (ast-ref-symbol node)))
+                   ((ast-define? node)
+                    (ast-define-set-expr! node (recur (ast-define-expr node)))
+                    (let ((ref (ast-define-ref node)))
+                      (ast-define-set-ref! node
+                                           (ast-lambda-define (ast-ref-scope ref)
+                                                              (ast-ref-symbol ref))))
+                    node)
+                   ((ast-lambda? node)
+                    (ast-lambda-set-list! node
+                                          (improper-map
+                                           (lambda (ref)
+                                             (ast-lambda-define
+                                              node (ast-ref-symbol ref)))
+                                           (ast-lambda-list node)))
+                    (ast-lambda-set-body! node (map recur (ast-lambda-body node)))
+                    node)))))
+
 
 ;; #f if no valid unquote occurs in form
 (define (never-unquoted? form)
@@ -114,4 +154,5 @@
   (-> form
       expand-quasiquotes
       object->ast
-      add-scope-to-lambdas))
+      add-scope-to-lambdas
+      resolve-references))
