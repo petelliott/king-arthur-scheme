@@ -76,11 +76,11 @@
   (cond
    ((ast-ref? ast)
     (if (ast-ref-scope ast)
-        `(ref ,(hashq ast 1048576))
+        `(ref ,(hashq ast 1048576) ,(ast-ref-boxed ast))
         (ast-ref-symbol ast)))
    ((ast-define? ast) `(define ,(ast->sexp (ast-define-ref ast))
                          ,(ast->sexp (ast-define-expr ast))))
-   ((ast-set? ast) `(define ,(ast->sexp (ast-set-ref ast))
+   ((ast-set? ast) `(set! ,(ast->sexp (ast-set-ref ast))
                       ,(ast->sexp (ast-set-expr ast))))
    ((ast-lambda? ast) `(lambda ,(improper-map ast->sexp (ast-lambda-list ast))
                          ,@(map ast->sexp (ast-lambda-body ast))))

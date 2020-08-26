@@ -103,6 +103,12 @@
                     (ast-lambda-set-body! node (map recur (ast-lambda-body node)))
                     node)))))
 
+(define (box-set-variables ast)
+  (traverse-ast ast ast-set?
+                (lambda (node recur)
+                  (ast-ref-set-boxed! (ast-set-ref node) #t)
+                  (recur (ast-set-expr node))
+                  node)))
 
 ;; #f if no valid unquote occurs in form
 (define (never-unquoted? form)
@@ -155,4 +161,5 @@
       expand-quasiquotes
       object->ast
       add-scope-to-lambdas
-      resolve-references))
+      resolve-references
+      box-set-variables))
