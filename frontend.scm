@@ -145,7 +145,7 @@
    ((not (pair? form)) form)
    ((eq? (car form) 'quasiquote)
     (expand-1-quasiquote (cadr form)))
-   (else (map expand-quasiquotes form))))
+   (else (improper-map expand-quasiquotes form))))
 
 
 (define (pipeline val fns)
