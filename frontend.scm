@@ -33,6 +33,23 @@
     ast)
    (else ast)))
 
+(define (traverse-ast-scope ast pred scope proc)
+  (traverse-ast ast (pred-or pred ast-lambda?)
+                (lambda (ast recur)
+                  (cond
+                   ((pred ast)
+                    (proc ast (lambda (node)
+                                (if (ast-lambda? ast)
+                                    (traverse-ast-scope node pred ast proc)
+                                    (traverse-ast-scope node pred scope proc)))
+                          scope))
+                   ((ast-lambda? ast)
+                    (ast-lambda-set-body! ast (map
+                                               (lambda (node)
+                                                 (traverse-ast-scope node pred
+                                                                     ast proc))
+                                               (ast-lambda-body ast)))
+                    ast)))))
 
 (define (form->ast form)
   (case (car form)
@@ -40,12 +57,11 @@
      (if (pair? (cadr form))
          (make-ast-define (make-ast-ref (caadr form))
                           (make-ast-lambda (cdadr form)
-                                           (map object->ast (cddr form))
-                                           '()))
+                                           (map object->ast (cddr form))))
          (make-ast-define (make-ast-ref (cadr form)) (object->ast (caddr form)))))
     ((set!) (make-ast-set (make-ast-ref (second form)) (object->ast (third form))))
     ((lambda) (make-ast-lambda (improper-map make-ast-ref (second form))
-                               (map object->ast (cddr form)) '()))
+                               (map object->ast (cddr form))))
     ((if) (make-ast-if (second form) (object->ast (third form))
                        (object->ast (fourth form))))
     ((quote) (make-ast-quote (second form)))
@@ -60,24 +76,36 @@
    (else (make-ast-literal object))))
 
 
-(define (add-scope-to-lambdas-inner ast scope)
-  (traverse-ast ast (pred-or ast-lambda? ast-ref?)
-                (lambda (node recur)
-                  (cond
-                   ((ast-lambda? node)
-                    (ast-lambda-set-parent! node scope)
-                    (map
-                     (lambda (newnode)
-                       (add-scope-to-lambdas-inner newnode node))
-                     (ast-lambda-body node)))
-                   ((ast-ref? node)
-                    (ast-ref-set-scope! node scope)))
-                  node)))
+;(define (add-scope-to-lambdas-inner ast scope)
+;  (traverse-ast ast (pred-or ast-lambda? ast-ref?)
+;                (lambda (node recur)
+;                  (cond
+;                   ((ast-lambda? node)
+;                    (ast-lambda-set-parent! node scope)
+;                    (map
+;                     (lambda (newnode)
+;                       (add-scope-to-lambdas-inner newnode node))
+;                     (ast-lambda-body node)))
+;                   ((ast-ref? node)
+;                    (ast-ref-set-scope! node scope)))
+;                  node)))
+;
+;(define (add-scope-to-lambdas ast)
+;  (add-scope-to-lambdas-inner ast #f)
+;  ast)
+
 
 (define (add-scope-to-lambdas ast)
-  (add-scope-to-lambdas-inner ast #f)
-  ast)
-
+  (traverse-ast-scope
+   ast (pred-or ast-lambda? ast-ref?) '()
+   (lambda (node recur scope)
+     (cond
+      ((ast-lambda? node)
+       (ast-lambda-set-parent! node scope)
+       (map recur (ast-lambda-body node)))
+      ((ast-ref? node)
+       (ast-ref-set-scope! node scope)))
+     node)))
 
 (define (resolve-references ast)
   (traverse-ast ast (pred-or ast-ref? ast-define? ast-lambda?)
@@ -109,6 +137,19 @@
                   (ast-ref-set-boxed! (ast-set-ref node) #t)
                   (recur (ast-set-expr node))
                   node)))
+
+(define (enclose ref scope)
+  (unless (and scope (eq? (ast-ref-scope ref) scope))
+    (unless (memq ref (ast-lambda-closure scope))
+      (ast-lambda-enclose! scope ref))
+    (enclose ref (ast-lambda-parent scope))))
+
+(define (calculate-closures ast)
+  (traverse-ast-scope
+   ast ast-ref? '()
+   (lambda (ast recur scope)
+     (enclose ast scope)
+     ast)))
 
 ;; #f if no valid unquote occurs in form
 (define (never-unquoted? form)
@@ -162,4 +203,5 @@
       object->ast
       add-scope-to-lambdas
       resolve-references
-      box-set-variables))
+      box-set-variables
+      calculate-closures))

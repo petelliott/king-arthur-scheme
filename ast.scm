@@ -20,12 +20,19 @@
   (expr ast-set-expr ast-set-set-expr!))
 
 (define-record-type ast-lambda
-  (make-ast-lambda lambda-list body scope)
+  (private-make-ast-lambda lambda-list body scope closure)
   ast-lambda?
   (lambda-list ast-lambda-list ast-lambda-set-list!)
   (body ast-lambda-body ast-lambda-set-body!)
   (scope ast-lambda-scope ast-lambda-set-scope!)
-  (parent ast-lambda-parent ast-lambda-set-parent!))
+  (parent ast-lambda-parent ast-lambda-set-parent!)
+  (closure ast-lambda-closure ast-lambda-set-closure!))
+
+(define (make-ast-lambda lambda-list body)
+  (private-make-ast-lambda lambda-list body '() '()))
+
+(define (ast-lambda-enclose! ast ref)
+  (ast-lambda-set-closure! ast (cons ref (ast-lambda-closure ast))))
 
 (define (ast-lambda-scope-intern! ast sym)
   (unless (assoc sym (ast-lambda-scope ast))
@@ -83,6 +90,7 @@
    ((ast-set? ast) `(set! ,(ast->sexp (ast-set-ref ast))
                       ,(ast->sexp (ast-set-expr ast))))
    ((ast-lambda? ast) `(lambda ,(improper-map ast->sexp (ast-lambda-list ast))
+                         ,(map ast->sexp (ast-lambda-closure ast))
                          ,@(map ast->sexp (ast-lambda-body ast))))
    ((ast-if? ast) `(if ,(ast->sexp (ast-if-condition ast))
                        ,(ast->sexp (ast-if-tbranch ast))
