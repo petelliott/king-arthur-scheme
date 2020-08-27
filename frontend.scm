@@ -97,7 +97,7 @@
 
 (define (add-scope-to-lambdas ast)
   (traverse-ast-scope
-   ast (pred-or ast-lambda? ast-ref?) '()
+   ast (pred-or ast-lambda? ast-ref?) #f
    (lambda (node recur scope)
      (cond
       ((ast-lambda? node)
@@ -139,16 +139,32 @@
                   node)))
 
 (define (enclose ref scope)
-  (unless (and scope (eq? (ast-ref-scope ref) scope))
+  (unless (or (not (ast-ref-scope ref)) (not scope)
+              (eq? (ast-ref-scope ref) scope))
     (unless (memq ref (ast-lambda-closure scope))
       (ast-lambda-enclose! scope ref))
     (enclose ref (ast-lambda-parent scope))))
 
 (define (calculate-closures ast)
   (traverse-ast-scope
-   ast ast-ref? '()
+   ast ast-ref? #f
    (lambda (ast recur scope)
      (enclose ast scope)
+     ast)))
+
+(define (mark-tail-position ast)
+  (cond
+   ((ast-call? ast) (ast-call-set-tail! ast #t))
+   ((ast-if? ast)
+    (mark-tail-position (ast-if-tbranch ast))
+    (mark-tail-position (ast-if-fbranch ast)))))
+
+(define (mark-tail-calls ast)
+  (traverse-ast
+   ast ast-lambda?
+   (lambda (ast recur)
+     (mark-tail-position (last (ast-lambda-body ast)))
+     (map recur (ast-lambda-body ast))
      ast)))
 
 ;; #f if no valid unquote occurs in form
@@ -204,4 +220,5 @@
       add-scope-to-lambdas
       resolve-references
       box-set-variables
-      calculate-closures))
+      calculate-closures
+      mark-tail-calls))

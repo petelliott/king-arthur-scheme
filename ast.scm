@@ -72,7 +72,8 @@
   (make-ast-call callee args)
   ast-call?
   (callee ast-call-callee ast-call-set-callee!)
-  (args ast-call-args ast-call-set-args!))
+  (args ast-call-args ast-call-set-args!)
+  (tail ast-call-tail? ast-call-set-tail!))
 
 (define-record-type ast-quote
   (make-ast-quote value)
